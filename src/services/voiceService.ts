@@ -290,26 +290,61 @@ export function stopListening(): void {
 }
 
 // === Command Parsing ===
-const ANSWER_PATTERNS: Record<string, RegExp> = {
-  A: /^(a|ay|ei|hey|選a|answer a|第一|first|1|one|ㄟ)$/i,
-  B: /^(b|be|bee|bi|選b|answer b|第二|second|2|two)$/i,
-  C: /^(c|see|sea|si|選c|answer c|第三|third|3|three)$/i,
-  D: /^(d|de|dee|di|選d|answer d|第四|fourth|4|four)$/i,
-}
+// Flexible matching: check if transcript CONTAINS answer indicators
+// On mobile, speech recognition often adds extra words/noise around the actual answer
 
-const NEXT_PATTERNS = /^(下一題|繼續|next|continue|下一個)$/i
-const NEW_ROUND_PATTERNS = /^(新的一局|再來一局|new round|再來|開始新的|新一局|開新局)$/i
-const START_PATTERNS = /^(開始|start|begin|go|出題)$/i
-
-function parseCommand(text: string): VoiceCommand {
+function findAnswerInText(text: string): 'A' | 'B' | 'C' | 'D' | null {
   const cleaned = text.replace(/\s+/g, '').toLowerCase()
 
-  for (const [letter, pattern] of Object.entries(ANSWER_PATTERNS)) {
-    if (pattern.test(cleaned)) {
-      return { type: 'answer', value: letter as 'A' | 'B' | 'C' | 'D' }
-    }
+  // Strategy 1: Check for explicit Chinese commands (most reliable)
+  if (/選a|第一/.test(cleaned)) return 'A'
+  if (/選b|第二/.test(cleaned)) return 'B'
+  if (/選c|第三/.test(cleaned)) return 'C'
+  if (/選d|第四/.test(cleaned)) return 'D'
+
+  // Strategy 2: Check for English "answer X" pattern
+  const answerMatch = cleaned.match(/answer\s*([abcd])/i)
+  if (answerMatch) return answerMatch[1].toUpperCase() as 'A' | 'B' | 'C' | 'D'
+
+  // Strategy 3: Check individual words in original text for single letter answers
+  const words = text.trim().split(/\s+/)
+  for (const word of words) {
+    const w = word.toLowerCase().replace(/[^a-z0-9]/g, '')
+    // Single letter or repeated single letter (e.g., "a", "aaa", "aaaaaaa")
+    if (/^a+$/i.test(w)) return 'A'
+    if (/^b+$/i.test(w) || w === 'be' || w === 'bee') return 'B'
+    if (/^c+$/i.test(w) || w === 'see' || w === 'sea') return 'C'
+    if (/^d+$/i.test(w) || w === 'de' || w === 'dee') return 'D'
+    // Number answers
+    if (w === '1' || w === 'one' || w === 'first') return 'A'
+    if (w === '2' || w === 'two' || w === 'second') return 'B'
+    if (w === '3' || w === 'three' || w === 'third') return 'C'
+    if (w === '4' || w === 'four' || w === 'fourth') return 'D'
   }
 
+  // Strategy 4: Check for phonetic patterns anywhere in cleaned text
+  if (/^a+y?$|^ei$|^hey$/i.test(cleaned)) return 'A'
+  if (/^b+[ei]?$|^bi$/i.test(cleaned)) return 'B'
+  if (/^c+$|^si$/i.test(cleaned)) return 'C'
+  if (/^d+[ei]?$/i.test(cleaned)) return 'D'
+
+  return null
+}
+
+const NEXT_PATTERNS = /(下一題|繼續|next|continue|下一個)/i
+const NEW_ROUND_PATTERNS = /(新的一局|再來一局|new\s*round|再來|開始新的|新一局|開新局)/i
+const START_PATTERNS = /(開始|start|begin|出題)/i
+
+function parseCommand(text: string): VoiceCommand {
+  // Try answer matching first (flexible, handles noise)
+  const answer = findAnswerInText(text)
+  if (answer) {
+    return { type: 'answer', value: answer }
+  }
+
+  const cleaned = text.replace(/\s+/g, '').toLowerCase()
+
+  // Command matching (uses contains instead of exact match)
   if (NEXT_PATTERNS.test(cleaned)) return { type: 'next' }
   if (NEW_ROUND_PATTERNS.test(cleaned)) return { type: 'newRound' }
   if (START_PATTERNS.test(cleaned)) return { type: 'start' }

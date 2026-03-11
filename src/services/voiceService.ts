@@ -132,6 +132,24 @@ export function stopSpeaking(): void {
   onSpeakDone = null
 }
 
+// === Debug Log (temporary) ===
+type DebugListener = (logs: string[]) => void
+const debugLogs: string[] = []
+let debugListener: DebugListener | null = null
+
+function debugLog(msg: string) {
+  const time = new Date().toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const entry = `[${time}] ${msg}`
+  debugLogs.push(entry)
+  if (debugLogs.length > 20) debugLogs.shift()
+  debugListener?.([...debugLogs])
+}
+
+export function onDebugLog(listener: DebugListener | null) {
+  debugListener = listener
+  if (listener) listener([...debugLogs])
+}
+
 // === STT (Speech-to-Text) ===
 let recognition: SpeechRecognitionInstance | null = null
 let keepListening = false
@@ -140,17 +158,26 @@ let currentLang: 'en' | 'zh' = 'en'
 let restartTimer: ReturnType<typeof setTimeout> | null = null
 
 export function isSpeechRecognitionSupported(): boolean {
-  return 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supported = 'SpeechRecognition' in window || 'webkitSpeechRecognition' in (window as any)
+  debugLog(`STT supported: ${supported} (SR: ${'SpeechRecognition' in window}, webkit: ${'webkitSpeechRecognition' in window})`)
+  return supported
 }
 
 function createRecognition(): SpeechRecognitionInstance | null {
-  if (!isSpeechRecognitionSupported()) return null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const SpeechRecognitionCtor: SpeechRecognitionConstructor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  const w = window as any
+  if (!w.SpeechRecognition && !w.webkitSpeechRecognition) {
+    debugLog('createRecognition: no constructor found')
+    return null
+  }
+  const SpeechRecognitionCtor: SpeechRecognitionConstructor = w.SpeechRecognition || w.webkitSpeechRecognition
+  debugLog(`createRecognition: using ${w.SpeechRecognition ? 'SpeechRecognition' : 'webkitSpeechRecognition'}`)
   return new SpeechRecognitionCtor()
 }
 
 function startRecognitionSession() {
+  debugLog(`startSession: keepListening=${keepListening}, hasCallback=${!!currentOnResult}, lang=${currentLang}`)
   if (!keepListening || !currentOnResult) return
 
   // Clean up previous
@@ -159,7 +186,10 @@ function startRecognitionSession() {
   }
 
   recognition = createRecognition()
-  if (!recognition) return
+  if (!recognition) {
+    debugLog('startSession: FAILED to create recognition')
+    return
+  }
 
   recognition.continuous = false
   recognition.interimResults = false
@@ -168,36 +198,43 @@ function startRecognitionSession() {
 
   recognition.onresult = (event: SpeechRecognitionEventType) => {
     const results = event.results[0]
+    const transcripts: string[] = []
+    for (let i = 0; i < results.length; i++) {
+      transcripts.push(results[i].transcript.trim())
+    }
+    debugLog(`onresult: [${transcripts.join(' | ')}]`)
+
     // Check all alternatives for best match
     for (let i = 0; i < results.length; i++) {
       const transcript = results[i].transcript.trim().toLowerCase()
       const command = parseCommand(transcript)
       if (command.type !== 'unknown') {
-        // Got a valid command — stop listening and deliver result
+        debugLog(`MATCH: type=${command.type}, value=${'value' in command ? command.value : ''}`)
         keepListening = false
         currentOnResult?.(command)
         return
       }
     }
+    debugLog('No valid match, will restart...')
     // No valid match — keep listening, auto-restart via onend
   }
 
   recognition.onerror = (event: unknown) => {
-    // On mobile, "no-speech" and "aborted" errors are normal timeouts
-    const errorEvent = event as { error?: string }
-    const errorType = errorEvent?.error || ''
-    // Only stop on fatal errors, otherwise let onend restart
+    const errorEvent = event as { error?: string; message?: string }
+    const errorType = errorEvent?.error || 'unknown'
+    debugLog(`onerror: ${errorType} (${errorEvent?.message || ''})`)
     if (errorType === 'not-allowed' || errorType === 'service-not-allowed') {
+      debugLog('FATAL error, stopping')
       keepListening = false
     }
   }
 
   recognition.onend = () => {
-    // Auto-restart if we should still be listening
+    debugLog(`onend: keepListening=${keepListening}`)
     if (keepListening) {
-      // Small delay before restarting to avoid rapid restart loops on mobile
       restartTimer = setTimeout(() => {
         if (keepListening) {
+          debugLog('Restarting recognition...')
           startRecognitionSession()
         }
       }, 300)
@@ -206,8 +243,9 @@ function startRecognitionSession() {
 
   try {
     recognition.start()
-  } catch {
-    // If start fails (e.g. already started), retry after delay
+    debugLog('recognition.start() OK')
+  } catch (e) {
+    debugLog(`recognition.start() ERROR: ${e}`)
     restartTimer = setTimeout(() => {
       if (keepListening) {
         startRecognitionSession()
@@ -220,7 +258,11 @@ export function startListening(
   onResult: (command: VoiceCommand) => void,
   lang: 'en' | 'zh' = 'en'
 ): () => void {
-  if (!isSpeechRecognitionSupported()) return () => {}
+  debugLog(`startListening called, lang=${lang}`)
+  if (!isSpeechRecognitionSupported()) {
+    debugLog('STT not supported, aborting')
+    return () => {}
+  }
 
   stopListening()
 
@@ -234,6 +276,7 @@ export function startListening(
 }
 
 export function stopListening(): void {
+  debugLog('stopListening called')
   keepListening = false
   currentOnResult = null
   if (restartTimer) {

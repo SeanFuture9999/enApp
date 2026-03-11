@@ -4,6 +4,7 @@ import { useQuiz } from '../hooks/useQuiz'
 import { useVoice } from '../hooks/useVoice'
 import { getSettings, saveSettings } from '../services/storageService'
 import { getCompleteSentence } from '../services/quizEngine'
+import { onDebugLog } from '../services/voiceService'
 import QuestionCard from './QuestionCard'
 import ResultFeedback from './ResultFeedback'
 import RoundSummary from './RoundSummary'
@@ -22,8 +23,16 @@ export default function QuizScreen({ onNavigateRecords }: Props) {
   const [voiceEnabled, setVoiceEnabled] = useState(getSettings().voiceEnabled)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [debugLogs, setDebugLogs] = useState<string[]>([])
+  const [showDebug, setShowDebug] = useState(false)
   const phaseRef = useRef(quiz.phase)
   phaseRef.current = quiz.phase
+
+  // Debug log listener
+  useEffect(() => {
+    onDebugLog((logs) => setDebugLogs(logs))
+    return () => onDebugLog(null)
+  }, [])
 
   // Toggle voice
   const toggleVoice = useCallback(() => {
@@ -238,6 +247,37 @@ export default function QuizScreen({ onNavigateRecords }: Props) {
           onViewRecords={onNavigateRecords}
         />
       )}
+
+      {/* Debug Panel (temporary) */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 999 }}>
+        <button
+          onClick={() => setShowDebug(!showDebug)}
+          style={{
+            width: '100%', padding: '6px', fontSize: '12px',
+            background: '#333', color: '#0f0', border: 'none',
+            fontFamily: 'monospace'
+          }}
+        >
+          🔧 Debug ({quiz.phase}) {showDebug ? '▼' : '▲'}
+        </button>
+        {showDebug && (
+          <div style={{
+            background: '#111', color: '#0f0', padding: '8px',
+            fontSize: '11px', fontFamily: 'monospace', maxHeight: '200px',
+            overflow: 'auto', lineHeight: 1.4
+          }}>
+            <div>Phase: {quiz.phase} | Speaking: {String(voice.isSpeaking)} | Listening: {String(voice.isListening)}</div>
+            <div>TTS: {String(voice.ttsAvailable)} | STT: {String(voice.sttAvailable)} | VoiceReady: {String(voice.voicesReady)}</div>
+            <hr style={{ borderColor: '#333' }} />
+            {debugLogs.map((log, i) => (
+              <div key={i} style={{ color: log.includes('ERROR') || log.includes('FATAL') ? '#f44' : log.includes('MATCH') ? '#4f4' : '#0f0' }}>
+                {log}
+              </div>
+            ))}
+            {debugLogs.length === 0 && <div style={{ color: '#666' }}>No logs yet...</div>}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

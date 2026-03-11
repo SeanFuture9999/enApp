@@ -134,9 +134,86 @@ export function stopSpeaking(): void {
 
 // === STT (Speech-to-Text) ===
 let recognition: SpeechRecognitionInstance | null = null
+let keepListening = false
+let currentOnResult: ((command: VoiceCommand) => void) | null = null
+let currentLang: 'en' | 'zh' = 'en'
+let restartTimer: ReturnType<typeof setTimeout> | null = null
 
 export function isSpeechRecognitionSupported(): boolean {
   return 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window
+}
+
+function createRecognition(): SpeechRecognitionInstance | null {
+  if (!isSpeechRecognitionSupported()) return null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const SpeechRecognitionCtor: SpeechRecognitionConstructor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  return new SpeechRecognitionCtor()
+}
+
+function startRecognitionSession() {
+  if (!keepListening || !currentOnResult) return
+
+  // Clean up previous
+  if (recognition) {
+    try { recognition.stop() } catch { /* ignore */ }
+  }
+
+  recognition = createRecognition()
+  if (!recognition) return
+
+  recognition.continuous = false
+  recognition.interimResults = false
+  recognition.lang = currentLang === 'en' ? 'en-US' : 'zh-TW'
+  recognition.maxAlternatives = 5
+
+  recognition.onresult = (event: SpeechRecognitionEventType) => {
+    const results = event.results[0]
+    // Check all alternatives for best match
+    for (let i = 0; i < results.length; i++) {
+      const transcript = results[i].transcript.trim().toLowerCase()
+      const command = parseCommand(transcript)
+      if (command.type !== 'unknown') {
+        // Got a valid command — stop listening and deliver result
+        keepListening = false
+        currentOnResult?.(command)
+        return
+      }
+    }
+    // No valid match — keep listening, auto-restart via onend
+  }
+
+  recognition.onerror = (event: unknown) => {
+    // On mobile, "no-speech" and "aborted" errors are normal timeouts
+    const errorEvent = event as { error?: string }
+    const errorType = errorEvent?.error || ''
+    // Only stop on fatal errors, otherwise let onend restart
+    if (errorType === 'not-allowed' || errorType === 'service-not-allowed') {
+      keepListening = false
+    }
+  }
+
+  recognition.onend = () => {
+    // Auto-restart if we should still be listening
+    if (keepListening) {
+      // Small delay before restarting to avoid rapid restart loops on mobile
+      restartTimer = setTimeout(() => {
+        if (keepListening) {
+          startRecognitionSession()
+        }
+      }, 300)
+    }
+  }
+
+  try {
+    recognition.start()
+  } catch {
+    // If start fails (e.g. already started), retry after delay
+    restartTimer = setTimeout(() => {
+      if (keepListening) {
+        startRecognitionSession()
+      }
+    }, 500)
+  }
 }
 
 export function startListening(
@@ -147,43 +224,22 @@ export function startListening(
 
   stopListening()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const SpeechRecognitionCtor: SpeechRecognitionConstructor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-  recognition = new SpeechRecognitionCtor()
-  recognition.continuous = false
-  recognition.interimResults = false
-  recognition.lang = lang === 'en' ? 'en-US' : 'zh-TW'
-  recognition.maxAlternatives = 5
+  keepListening = true
+  currentOnResult = onResult
+  currentLang = lang
 
-  recognition.onresult = (event: SpeechRecognitionEventType) => {
-    const results = event.results[0]
-    // Check all alternatives for best match
-    for (let i = 0; i < results.length; i++) {
-      const transcript = results[i].transcript.trim().toLowerCase()
-      const command = parseCommand(transcript)
-      if (command.type !== 'unknown') {
-        onResult(command)
-        return
-      }
-    }
-    // If no match found, send the first result as unknown
-    onResult(parseCommand(results[0].transcript.trim().toLowerCase()))
-  }
-
-  recognition.onerror = () => {
-    // Silently handle errors - user can tap button instead
-  }
-
-  recognition.onend = () => {
-    // Auto-restart if still in listening mode
-  }
-
-  recognition.start()
+  startRecognitionSession()
 
   return () => stopListening()
 }
 
 export function stopListening(): void {
+  keepListening = false
+  currentOnResult = null
+  if (restartTimer) {
+    clearTimeout(restartTimer)
+    restartTimer = null
+  }
   if (recognition) {
     try { recognition.stop() } catch { /* ignore */ }
     recognition = null

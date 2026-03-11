@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create vite@latest . -- --template react-ts)",
+      "Bash(npx --yes create-vite@latest toeic-app --template react-ts)",
+      "Bash(npm install)",
+      "Bash(npm install -D vite-plugin-pwa)",
+      "Bash(node scripts/parseVocabulary.js)",
+      "Bash(node -e \"const d=require\\(''fs''\\).readFileSync\\(''src/data/wordBank.json'',''utf-8''\\); const a=JSON.parse\\(d\\); const bad=a.filter\\(e=>e.id>3100\\); console.log\\(''Bad entries:'', bad.length\\); bad.slice\\(0,5\\).forEach\\(e=>console.log\\(JSON.stringify\\(e\\)\\)\\)\")",
+      "Bash(node scripts/parseVocabulary.cjs)",
+      "Bash(node -e \":*)",
+      "Bash(node scripts/generateStarterSentences.cjs)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx vite build)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(node -e \"const a=JSON.parse\\(require\\(''fs''\\).readFileSync\\(''src/data/wordBank.json'',''utf-8''\\)\\); const b=a.find\\(e=>e.word===''bankrupt''\\); console.log\\(JSON.stringify\\(b,null,2\\)\\);\")",
+      "Bash(node -e \"const a=JSON.parse\\(require\\(''fs''\\).readFileSync\\(''src/data/wordBank.json'',''utf-8''\\)\\); [''bankrupt'',''abstract'',''alert'',''access'',''accent'',''import'',''judge'',''aboard''].forEach\\(w=>{const e=a.find\\(x=>x.word===w\\); if\\(e\\)console.log\\(e.id+''. ''+e.word+'' [''+e.pos+''] ''+e.meaning\\)}\\);\")"
+    ]
+  }
+}

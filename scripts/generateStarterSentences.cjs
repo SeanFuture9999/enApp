@@ -253,7 +253,14 @@ function generateSentences(word, usedTemplateIndices) {
 }
 
 function main() {
-  const selectedWords = wordBank.slice(0, 500)
+  // Shuffle the entire word bank and pick 500 words evenly distributed
+  // This ensures words from A-Z are all represented, not just A-B
+  const shuffled = [...wordBank].sort(() => Math.random() - 0.5)
+  const selectedWords = shuffled.slice(0, 500)
+
+  // Sort by ID for consistent output
+  selectedWords.sort((a, b) => a.id - b.id)
+
   const usedTemplateIndices = new Map()
 
   const result = selectedWords.map(word => ({
@@ -270,6 +277,15 @@ function main() {
   const allEn = result.flatMap(w => w.sentences.map(s => s.en))
   const uniqueEn = new Set(allEn)
   console.log(`Unique English templates used: ${uniqueEn.size}`)
+
+  // Check letter distribution
+  const letters = {}
+  selectedWords.forEach(w => {
+    const l = w.word[0].toUpperCase()
+    letters[l] = (letters[l] || 0) + 1
+  })
+  console.log('\nLetter distribution of selected 500 words:')
+  console.log(Object.entries(letters).sort().map(([l, c]) => `${l}:${c}`).join(' '))
 
   // Sample output
   console.log('\nSamples:')

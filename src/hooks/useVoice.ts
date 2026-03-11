@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { VoiceCommand, AppSettings } from '../types'
+import type { VoiceCommand } from '../types'
 import {
   initVoices,
   speakSequence,

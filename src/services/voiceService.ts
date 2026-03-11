@@ -1,9 +1,41 @@
 import type { VoiceCommand } from '../types'
 
+// Web Speech API type declarations (not available in all TS environments)
+interface SpeechRecognitionResult {
+  readonly length: number
+  item(index: number): SpeechRecognitionAlternative
+  [index: number]: SpeechRecognitionAlternative
+}
+interface SpeechRecognitionAlternative {
+  readonly transcript: string
+  readonly confidence: number
+}
+interface SpeechRecognitionResultList {
+  readonly length: number
+  item(index: number): SpeechRecognitionResult
+  [index: number]: SpeechRecognitionResult
+}
+interface SpeechRecognitionEventType {
+  readonly results: SpeechRecognitionResultList
+}
+interface SpeechRecognitionInstance {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  maxAlternatives: number
+  onresult: ((event: SpeechRecognitionEventType) => void) | null
+  onerror: ((event: unknown) => void) | null
+  onend: (() => void) | null
+  start(): void
+  stop(): void
+}
+interface SpeechRecognitionConstructor {
+  new (): SpeechRecognitionInstance
+}
+
 // === Voice availability ===
 let enVoice: SpeechSynthesisVoice | null = null
 let zhVoice: SpeechSynthesisVoice | null = null
-let voicesLoaded = false
 
 function loadVoices(): Promise<void> {
   return new Promise((resolve) => {
@@ -102,8 +134,7 @@ export function stopSpeaking(): void {
 }
 
 // === STT (Speech-to-Text) ===
-type SpeechRecognitionType = typeof window extends { SpeechRecognition: infer T } ? T : unknown
-let recognition: InstanceType<typeof SpeechRecognition> | null = null
+let recognition: SpeechRecognitionInstance | null = null
 
 export function isSpeechRecognitionSupported(): boolean {
   return 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window
@@ -117,14 +148,15 @@ export function startListening(
 
   stopListening()
 
-  const SpeechRecognition = window.SpeechRecognition || (window as unknown as { webkitSpeechRecognition: typeof window.SpeechRecognition }).webkitSpeechRecognition
-  recognition = new SpeechRecognition()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const SpeechRecognitionCtor: SpeechRecognitionConstructor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  recognition = new SpeechRecognitionCtor()
   recognition.continuous = false
   recognition.interimResults = false
   recognition.lang = lang === 'en' ? 'en-US' : 'zh-TW'
   recognition.maxAlternatives = 5
 
-  recognition.onresult = (event: SpeechRecognitionEvent) => {
+  recognition.onresult = (event: SpeechRecognitionEventType) => {
     const results = event.results[0]
     // Check all alternatives for best match
     for (let i = 0; i < results.length; i++) {

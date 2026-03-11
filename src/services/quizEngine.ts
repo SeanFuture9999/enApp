@@ -49,6 +49,11 @@ export function startRound(): QuizQuestion[] {
   const selected = shuffle(available).slice(0, 10)
   const usedIds = new Set(selected.map(w => w.id))
 
+  // Pre-assign balanced correct positions: ensure A/B/C/D are roughly equal
+  // For 10 questions: 3,3,2,2 or 2,3,3,2 etc — shuffled
+  const positions = [0, 0, 0, 1, 1, 1, 2, 2, 3, 3] // 3A, 3B, 2C, 2D
+  const shuffledPositions = shuffle(positions)
+
   return selected.map((wordEntry, index) => {
     const ws = sentenceMap.get(wordEntry.id)!
     const sentence = ws.sentences[Math.floor(Math.random() * ws.sentences.length)]
@@ -56,17 +61,28 @@ export function startRound(): QuizQuestion[] {
     const distractors = selectDistractors(wordEntry, usedIds)
     distractors.forEach(d => usedIds.add(d.id))
 
-    // Build options array: correct + 3 distractors, then shuffle
-    const optionWords = [wordEntry.word, ...distractors.map(d => d.word)]
-    const shuffledOptions = shuffle(optionWords)
-    const correctOptionIndex = shuffledOptions.indexOf(wordEntry.word)
+    // Place correct answer at the pre-assigned position
+    const targetPosition = shuffledPositions[index]
+    const distractorWords = distractors.map(d => d.word)
+
+    // Build options: put correct word at targetPosition, fill rest with distractors
+    const options: string[] = []
+    let dIdx = 0
+    for (let i = 0; i < 4; i++) {
+      if (i === targetPosition) {
+        options.push(wordEntry.word)
+      } else {
+        options.push(distractorWords[dIdx] || '---')
+        dIdx++
+      }
+    }
 
     return {
       index,
       wordEntry,
       sentence,
-      options: shuffledOptions,
-      correctOptionIndex
+      options,
+      correctOptionIndex: targetPosition
     }
   })
 }

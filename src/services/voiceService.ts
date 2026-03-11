@@ -54,7 +54,6 @@ function loadVoices(): Promise<void> {
         voices.find(v => v.lang.startsWith('zh-Hant')) ||
         voices.find(v => v.lang.startsWith('zh')) || null
 
-      voicesLoaded = true
       return true
     }
 
